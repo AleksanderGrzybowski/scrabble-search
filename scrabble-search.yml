@@ -1,0 +1,121 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: scrabble-search
+data:
+  main.rb: |-
+    #! /usr/bin/ruby
+    require 'sinatra'
+
+    $words_file_location = "slowa.txt" # /tmp/all_words.txt"
+    $all_words = []
+
+    def load_words
+      puts "Reading the dictionary from #{$words_file_location}..."
+      File.foreach($words_file_location) { |line| $all_words << line.strip }
+      puts "Loaded #{$all_words.size} words."
+    end
+
+    def find_matches(search)
+      regex = Regexp.new("^#{search}$").freeze
+      found = $all_words.select { |candidate| regex.match?(candidate) }
+      return found
+    end
+
+    def create_form
+      "<form method='GET' action='/'> <input type='text' name='query'> </form>"
+    end
+
+    def format_response(matches)
+      words = "<pre>" + matches.map { |word| "- #{word}" }.join("\n") + "</pre>"
+      return create_form + words
+    end
+
+    def start_server
+      set :bind, '0.0.0.0'
+
+      get '/' do
+        query = params['query']
+        if (query == nil)
+          return create_form
+        end
+
+        puts "Searching for #{query}..."
+        matches = find_matches(query)
+        puts "Found #{matches.size} matching words."
+
+        return format_response(matches)
+      end
+    end
+
+    load_words
+    start_server
+
+  entrypoint.sh: |-
+    #! /bin/bash
+    set -e
+
+    apt-get update
+    apt-get -y install unzip curl ruby ruby-sinatra
+    cd /tmp
+    curl --output sjp.zip https://sjp.pl/slownik/growy/sjp-20211125.zip
+    unzip sjp.zip
+    
+    ruby /scripts/main.rb
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scrabble-search
+spec:
+  selector:
+    matchLabels:
+      app: scrabble-search
+  template:
+    metadata:
+      labels:
+        app: scrabble-search
+    spec:
+      containers:
+      - name: scrabble-search
+        image: ubuntu:latest
+        args:
+        - bash  
+        - -c
+        - '/scripts/entrypoint.sh'
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: scrabble-search
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scrabble-search
+spec:
+  selector:
+    app: scrabble-search
+  ports:
+  - port: 4567
+    targetPort: 4567
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: scrabble-search
+spec:
+  rules:
+  - host: scrabble-search.kelog.pl
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: scrabble-search
+          servicePort: 4567
+
