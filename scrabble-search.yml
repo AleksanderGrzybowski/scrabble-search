@@ -6,24 +6,24 @@ data:
   main.rb: |-
     #! /usr/bin/ruby
     require 'sinatra'
+    $stdout.sync = true # for some reason stdout doesn't show up in container without that
 
-    $words_file_location = "slowa.txt" # /tmp/all_words.txt"
+    $words_file_location = "/tmp/all_words.txt"
     $all_words = []
 
     def load_words
-      puts "Reading the dictionary from #{$words_file_location}..."
+      puts "Reading dictionary from #{$words_file_location}..."
       File.foreach($words_file_location) { |line| $all_words << line.strip }
       puts "Loaded #{$all_words.size} words."
     end
 
     def find_matches(search)
       regex = Regexp.new("^#{search}$").freeze
-      found = $all_words.select { |candidate| regex.match?(candidate) }
-      return found
+      return $all_words.select { |candidate| regex.match?(candidate) }
     end
 
     def create_form
-      "<form method='GET' action='/'> <input type='text' name='query'> </form>"
+      "<form method='GET' action='/'> <input type='text' name='query' autofocus> </form>"
     end
 
     def format_response(matches)
@@ -40,7 +40,7 @@ data:
           return create_form
         end
 
-        puts "Searching for #{query}..."
+        puts "Searching for '#{query}' ..."
         matches = find_matches(query)
         puts "Found #{matches.size} matching words."
 
@@ -55,12 +55,20 @@ data:
     #! /bin/bash
     set -e
 
+    DICTIONARY_URL="https://sjp.pl/slownik/growy/sjp-20211125.zip"
+    DICTIONARY_FILE_ORIGINAL_FILENAME="slowa.txt"
+
     apt-get update
-    apt-get -y install unzip curl ruby ruby-sinatra
+    apt-get -y install unzip curl ruby ruby-sinatra language-pack-pl
     cd /tmp
-    curl --output sjp.zip https://sjp.pl/slownik/growy/sjp-20211125.zip
+    curl --output sjp.zip ${DICTIONARY_URL}
     unzip sjp.zip
-    
+    mv ${DICTIONARY_FILE_ORIGINAL_FILENAME} all_words.txt
+
+    # Force PL locale - otherwise Ruby errors out on regex matching
+    export LANG=pl_PL.UTF-8
+    export LANGUAGE=pl_PL.UTF-8
+    export LC_ALL=pl_PL.UTF-8
     ruby /scripts/main.rb
 
 ---
@@ -81,9 +89,9 @@ spec:
       - name: scrabble-search
         image: ubuntu:latest
         args:
-        - bash  
+        - bash 
         - -c
-        - '/scripts/entrypoint.sh'
+        - 'bash /scripts/entrypoint.sh'
         volumeMounts:
         - name: scripts
           mountPath: /scripts
