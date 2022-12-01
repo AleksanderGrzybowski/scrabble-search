@@ -2,6 +2,7 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: scrabble-search
+  namespace: default
 data:
   main.rb: |-
     #! /usr/bin/ruby
@@ -55,7 +56,7 @@ data:
     #! /bin/bash
     set -e
 
-    DICTIONARY_URL="https://sjp.pl/slownik/growy/sjp-20211125.zip"
+    DICTIONARY_URL="https://sjp.pl/sl/growy/sjp-20221023.zip"
     DICTIONARY_FILE_ORIGINAL_FILENAME="slowa.txt"
 
     apt-get update
@@ -76,6 +77,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: scrabble-search
+  namespace: default
 spec:
   selector:
     matchLabels:
@@ -105,6 +107,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: scrabble-search
+  namespace: default
 spec:
   selector:
     app: scrabble-search
@@ -113,7 +116,7 @@ spec:
     targetPort: 4567
 
 ---
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: scrabble-search
@@ -123,7 +126,10 @@ spec:
     http:
       paths:
       - path: /
+        pathType: Prefix
         backend:
-          serviceName: scrabble-search
-          servicePort: 4567
+          service:
+            name: scrabble-search
+            port:
+              number: 4567
 
